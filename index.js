@@ -1,15 +1,11 @@
 const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
-const sgMail = require('@sendgrid/mail');
-require('dotenv').config();
+const nodemailer = require('nodemailer');
 
 const app = express();
 app.use(cors());
 app.use(express.json());
-
-// ✅ Set SendGrid API key
-sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 
 // ✅ MongoDB connection
 mongoose.connect(
@@ -31,25 +27,35 @@ const Credential = mongoose.model('Credential', credentialSchema);
 app.post('/sendemail', async (req, res) => {
   const { msg, emailList } = req.body;
 
+  // Validate request
   if (!msg || !emailList || !Array.isArray(emailList) || emailList.length === 0) {
     return res.status(400).send("❌ Bad request: msg and emailList are required");
   }
 
   try {
-    // Fetch credential (used for 'from' email)
+    // Fetch the first credential document
     const credential = await Credential.findOne();
-    if (!credential) return res.status(400).send("❌ No credentials found");
+    if (!credential) {
+      return res.status(400).send("❌ No credentials found");
+    }
 
-    // Prepare messages
-    const emails = emailList.map(email => ({
-      to: email,
-      from: credential.user, // must be verified in SendGrid
-      subject: 'Bulk Mail',
-      text: msg
-    }));
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: credential.user,
+        pass: credential.pass,
+      },
+    });
 
-    // Send all emails
-    await sgMail.send(emails);
+    for (const email of emailList) {
+      await transporter.sendMail({
+        from: credential.user,
+        to: email,
+        subject: 'Bulk Mail',
+        text: msg,
+      });
+    }
+
     console.log("✅ All emails sent successfully");
     res.send(true);
 
@@ -59,6 +65,4 @@ app.post('/sendemail', async (req, res) => {
   }
 });
 
-// ✅ Render uses port from env
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+app.listen(3000, () => console.log('🚀 Server running on port 3000'));
